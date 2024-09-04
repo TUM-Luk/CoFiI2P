@@ -323,35 +323,35 @@ class kitti_pc_img_dataset(data.Dataset):
 
         # # project coarse_points to image_s8 and get corrs
         # [3, 1280]
-        proj_coarse_points = np.dot(K_4, np.dot(np.linalg.inv(P[0:3, 0:3]), coarse_points)-np.dot(np.linalg.inv(P[0:3, 0:3]), P[0:3, 3:]))
-        coarse_points_mask = np.zeros((1, np.shape(coarse_points)[1]), dtype=np.float32)
-        proj_coarse_points[0:2, :] = proj_coarse_points[0:2, :] / proj_coarse_points[2:, :]
+        proj_coarse_points = np.dot(K_4, np.dot(np.linalg.inv(P[0:3, 0:3]), coarse_points)-np.dot(np.linalg.inv(P[0:3, 0:3]), P[0:3, 3:])) # 1280个点投影到coarse image上
+        coarse_points_mask = np.zeros((1, np.shape(coarse_points)[1]), dtype=np.float32) 
+        proj_coarse_points[0:2, :] = proj_coarse_points[0:2, :] / proj_coarse_points[2:, :] # 1280个点投影到coarse image上的坐标
         xy = np.floor(proj_coarse_points[0:2, :] + 0.5)
         is_in_picture = (xy[0, :] >= 1) & (xy[0, :] <= (self.img_W*scale_size - 3)) & (xy[1, :] >= 1) & (xy[1, :] <= (self.img_H*scale_size - 3)) & (proj_coarse_points[2, :] > 0)
         coarse_points_mask[:, is_in_picture] = 1.
 
-        pc_kpt_idx=np.where(coarse_points_mask.squeeze()==1)[0]
+        pc_kpt_idx=np.where(coarse_points_mask.squeeze()==1)[0] 
         # assert len(pc_kpt_idx) >= 64
-        index=np.random.permutation(len(pc_kpt_idx))[0:self.num_kpt]
+        index=np.random.permutation(len(pc_kpt_idx))[0:self.num_kpt] # 选取64个可以投影到image内的3D point的idx下标
         pc_kpt_idx=pc_kpt_idx[index]
 
         pc_outline_idx=np.where(coarse_points_mask.squeeze()==0)[0]
-        index=np.random.permutation(len(pc_outline_idx))[0:self.num_kpt]
+        index=np.random.permutation(len(pc_outline_idx))[0:self.num_kpt] # 同理选取64个投影到image之外的3D point的idx下标
         pc_outline_idx=pc_outline_idx[index]
 
-        xy2 = xy[:, is_in_picture]
+        xy2 = xy[:, is_in_picture] # 3D Point投影到图片内的pixel坐标
         img_mask_s8 = coo_matrix((np.ones_like(xy2[0, :]), (xy2[1, :], xy2[0, :])), shape=(int(self.img_H*scale_size), int(self.img_W*scale_size))).toarray()
         img_mask_s8 = np.array(img_mask_s8)
-        img_mask_s8[img_mask_s8 > 0] = 1.
-        coarse_xy = xy[:, pc_kpt_idx]
-        img_kpt_s8_index=xy[1,pc_kpt_idx]*self.img_W*scale_size +xy[0,pc_kpt_idx]
+        img_mask_s8[img_mask_s8 > 0] = 1. # 在coarse mask即1/8分辨率上 将被投影到的pixel位置为True
+        coarse_xy = xy[:, pc_kpt_idx] # 选取的64个点在coarse image上对应pixel坐标
+        img_kpt_s8_index=xy[1,pc_kpt_idx]*self.img_W*scale_size +xy[0,pc_kpt_idx] # 64个点对应的pixel（实际上是patch）的flatten下标，即image中正样本下标
         img_outline_index=np.where(img_mask_s8.squeeze().reshape(-1)==0)[0]
         index=np.random.permutation(len(img_outline_index))[0:self.num_kpt]
-        img_outline_index=img_outline_index[index]
+        img_outline_index=img_outline_index[index] # 选取64个image中的负样本下标
 
         # project to 1/2 resolution image
-        coarse_kpts = coarse_points[:, pc_kpt_idx]
-        proj_points = np.dot(K_2, np.dot(np.linalg.inv(P[0:3, 0:3]), coarse_kpts)-np.dot(np.linalg.inv(P[0:3, 0:3]), P[0:3, 3:]))
+        coarse_kpts = coarse_points[:, pc_kpt_idx] # 64个点的3D坐标
+        proj_points = np.dot(K_2, np.dot(np.linalg.inv(P[0:3, 0:3]), coarse_kpts)-np.dot(np.linalg.inv(P[0:3, 0:3]), P[0:3, 3:])) # 64个点投影到fine image上
         proj_points[0:2, :] = proj_points[0:2, :] / proj_points[2:, :]
         fine_xy = np.floor(proj_points[0:2, :])
         fine_is_in_picture = (fine_xy[0, :] >= 0) & (fine_xy[0, :] <= (self.img_W*0.5 - 1)) & (fine_xy[1, :] >= 0) & (fine_xy[1, :] <= (self.img_H*0.5 - 1)) & (proj_points[2, :] > 0)
@@ -359,9 +359,9 @@ class kitti_pc_img_dataset(data.Dataset):
         assert np.all(fine_is_in_picture==True)
 
         # get coarse inline points on fine feature map 
-        fine_xy_kpts_index = fine_xy[1,:]*self.img_W*0.5 +fine_xy[0,:]
-        fine_center_kpts_coors = coarse_xy * 4
-        indices = point2node(data_dict['points'][1], data_dict['points'][-1][pc_kpt_idx])
+        fine_xy_kpts_index = fine_xy[1,:]*self.img_W*0.5 +fine_xy[0,:] # 对应pixel在fine image中的flatten下标
+        fine_center_kpts_coors = coarse_xy * 4 # 对应pixel在fine image中的pixel坐标
+        indices = point2node(data_dict['points'][1], data_dict['points'][-1][pc_kpt_idx]) # 1层即10240个点与64个选中的3D点之间最近的点（实际上是自身），即64个选中点在10240个点中的idx下标
 
         return {'img': torch.from_numpy(img.astype(np.float32) / 255.).permute(2, 0, 1).contiguous(),
                 'pc_data_dict': data_dict,
