@@ -34,7 +34,7 @@ class Options_CARLA:
         self.num_pc = 20480
         self.num_kpt = 64
         self.pc_min_range = -1.0
-        self.pc_max_range = 40.0 # 80 for kitti in cofii2p
+        self.pc_max_range = 60.0 # 80 for kitti in cofii2p
         self.node_a_num = 1280
         self.node_b_num = 1280
         self.k_ab = 16
